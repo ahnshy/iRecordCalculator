@@ -3,7 +3,7 @@ import "./globals.css";
 import ThemeRegistry from "../components/ThemeRegistry";
 
 export const metadata: Metadata = {
-  title: "Calculator • Next.js + MUI",
+  title: "i Record Calculator [계산기] • Next.js",
   description: "iPhone-like calculator with persistent history",
 };
 
