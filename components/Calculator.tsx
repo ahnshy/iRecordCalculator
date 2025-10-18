@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import {
+
   Box, Paper, Typography, Grid, Button, Divider, Drawer, List, ListItem, ListItemButton, ListItemText, IconButton, Stack
 } from '@mui/material';
 import HistoryIcon from '@mui/icons-material/History';
@@ -20,6 +21,90 @@ function formatNumber(n: string) {
   return f ? `${int}.${f}` : int;
 }
 
+function AutoFitText({
+  text,
+  maxPx = 64,
+  minPx = 16,
+  step = 1,
+  weight = 700,
+  align = 'right',
+  family = 'inherit',
+  color,
+}: {
+  text: string;
+  maxPx?: number;
+  minPx?: number;
+  step?: number;
+  weight?: number;
+  align?: 'left'|'right'|'center';
+  family?: string;
+  color?: any;
+}) {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const spanRef = React.useRef<HTMLSpanElement>(null);
+  const [size, setSize] = React.useState<number>(maxPx);
+
+  const doFit = React.useCallback(() => {
+    const container = containerRef.current;
+    const span = spanRef.current;
+    if (!container || !span) return;
+
+    // Start from current size bounded by limits
+    let s = Math.min(maxPx, Math.max(minPx, size));
+
+    // Try to grow until it no longer fits or we hit max
+    while (s < maxPx) {
+      span.style.fontSize = s + 'px';
+      if (span.scrollWidth <= container.clientWidth) {
+        s += step;
+      } else {
+        break;
+      }
+    }
+    if (s > maxPx) s = maxPx;
+
+    // If still overflowing, shrink
+    span.style.fontSize = s + 'px';
+    while (span.scrollWidth > container.clientWidth && s > minPx) {
+      s -= step;
+      span.style.fontSize = s + 'px';
+    }
+
+    setSize(s);
+  }, [maxPx, minPx, step, size, text]);
+
+  React.useEffect(() => {
+    doFit();
+  }, [text, doFit]);
+
+  React.useEffect(() => {
+    const onResize = () => doFit();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [doFit]);
+
+  return (
+    <div ref={containerRef} style={{ width: '100%' }}>
+      <span
+        ref={spanRef}
+        style={{
+          display: 'inline-block',
+          width: '100%',
+          textAlign: align as any,
+          fontWeight: weight,
+          fontFamily: family,
+          fontSize: size,
+          lineHeight: 1.1,
+          whiteSpace: 'nowrap',
+          color,
+        }}
+      >
+        {text}
+      </span>
+    </div>
+  );
+}
+
 export default function Calculator() {
   const [display, setDisplay] = React.useState('0');
   const [prev, setPrev] = React.useState<string | null>(null);
@@ -27,6 +112,7 @@ export default function Calculator() {
   const [overwrite, setOverwrite] = React.useState(true);
   const [history, setHistory] = React.useState<HistoryItem[]>([]);
   const [historyOpen, setHistoryOpen] = React.useState(false);
+  const canBackspace = React.useMemo(() => !overwrite && !(display === '0' || display === '-0'), [display, overwrite]);
   const [expr, setExpr] = React.useState<string>('');
 
   React.useEffect(() => {
@@ -79,7 +165,19 @@ export default function Calculator() {
     return r.toString();
   };
 
-  const equals = () => {
+const backspace = () => {
+  if (!canBackspace) return;
+  setDisplay((d) => {
+    if (d.length <= 1) return '0';
+    if (d.startsWith('-') && d.length === 2) return '0';
+    // fallback normal trim
+    const nd = d.slice(0, -1);
+    if (nd === '' || nd === '-') return '0';
+    return nd;
+  });
+};
+
+const equals = () => {
     const result = compute();
     const expression = (expr ? expr + ' ' + display : (op ? `${prev ?? '0'} ${op} ${display}` : display));
     setDisplay(result); setPrev(null); setOp(null); setOverwrite(true);
@@ -99,6 +197,8 @@ export default function Calculator() {
       if (e.key === 'Enter' || e.key === '=') equals();
       if (e.key === 'Escape') clear();
       if (e.key === '%') percent();
+      if (e.key === 'Backspace') backspace();
+      if (e.key === 'Delete') clear();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -126,19 +226,38 @@ export default function Calculator() {
 
   return (
     <Box className="container">
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-        <Typography variant="h5" fontWeight={700}>계산기</Typography>
+      <Stack direction="row" alignItems="center" justifyContent="flex-end" sx={{ mb: 1 }}>
         <ThemeToggle />
       </Stack>
 
       <Paper elevation={3} className="calculator" sx={{ p: 2, borderRadius: 3 }}>
-        <Box onClick={() => setHistoryOpen(true)} sx={{ mb: 1, p: 2, borderRadius: 2, bgcolor: 'background.paper', display: 'flex', flexDirection:'column', gap: .5, cursor: 'pointer' }}>
-          <Typography variant="caption" color="text.secondary" sx={{ whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{expr || (op ? `${prev ?? '0'} ${op}` : '')}</Typography>
-          <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-            <Typography variant="h3" className="display" sx={{ fontWeight: 700 }}>{formatNumber(display)}</Typography>
-            <HistoryIcon fontSize="small" />
-          </Stack>
-        </Box>
+        <Box onClick={() => setHistoryOpen(true)} sx={{ mb: 1, p: 2, borderRadius: 2, bgcolor: 'background.paper', display: 'flex', flexDirection: 'column', gap: .5, cursor: 'pointer' }}>
+  <AutoFitText
+    text={expr || (op ? `${prev ?? '0'} ${op}` : '')}
+    maxPx={20}
+    minPx={12}
+    step={1}
+    weight={500}
+    align="right"
+    family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+    color={"var(--mui-palette-text-secondary)" as any}
+  />
+  <div style={{ display:'flex', alignItems:'center', gap: 8 }}>
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <AutoFitText
+        text={formatNumber(display)}
+        maxPx={56}
+        minPx={18}
+        step={1}
+        weight={800}
+        align="right"
+      />
+    </div>
+    <HistoryIcon fontSize="small" />
+  </div>
+</Box>
+
+
 
         <Divider sx={{ mb: 1 }} />
 
@@ -166,7 +285,7 @@ export default function Calculator() {
           <Grid item xs={3}><Key label="0" onClick={() => inputDigit('0')} /></Grid>
           <Grid item xs={3}><Key label="." onClick={() => inputDigit('.')} /></Grid>
           <Grid item xs={3}><Key label="=" onClick={() => equals()} sx={{ bgcolor: 'primary.main' }} /></Grid>
-          <Grid item xs={3}><Key label=" " onClick={() => {}} sx={{ visibility:'hidden' }} /></Grid>
+          <Grid item xs={3}><Key label="←" onClick={backspace} sx={{ bgcolor: canBackspace ? 'primary.main' : 'secondary.main', opacity: canBackspace ? 1 : 0.6 }} variant='contained' className={canBackspace ? '' : 'disabled'} /></Grid>
         </Grid>
       </Paper>
 
